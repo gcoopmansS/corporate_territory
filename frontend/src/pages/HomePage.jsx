@@ -17,29 +17,71 @@ function HomePage() {
     const token = import.meta.env.VITE_MAPBOX_TOKEN;
 
     if (!token) {
-      setError("Mapbox token is missing!");
+      setError("Mapbox token is missing! Check your .env.local file.");
       return;
     }
 
-    try {
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: "mapbox://styles/mapbox/streets-v11",
-        center: [-74.5, 40],
-        zoom: 9,
+    // Validate token before initializing map
+    fetch(
+      `https://api.mapbox.com/styles/v1/mapbox/streets-v12?access_token=${token}`,
+    )
+      .then((response) => {
+        if (!response.ok) {
+          return response.json().then((data) => {
+            throw new Error(
+              `Token validation failed: ${data.message || response.statusText}`,
+            );
+          });
+        }
+        return response.json();
+      })
+      .then(() => {
+        initMap();
+      })
+      .catch((error) => {
+        console.error("Token validation error:", error);
+        setError(
+          `Token error: ${error.message}. Please check your Mapbox token in .env.local`,
+        );
       });
 
-      map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
+    function initMap() {
+      try {
+        map.current = new mapboxgl.Map({
+          container: mapContainer.current,
+          style: "mapbox://styles/mapbox/streets-v12",
+          center: [-74.5, 40],
+          zoom: 9,
+          attributionControl: true,
+        });
 
-      map.current.on("load", () => {
-        setMapLoaded(true);
-      });
+        map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
 
-      map.current.on("error", (e) => {
-        setError(e.error?.message || "Map failed to load");
-      });
-    } catch (error) {
-      setError(error.message);
+        map.current.on("load", () => {
+          setMapLoaded(true);
+        });
+
+        map.current.on("error", (e) => {
+          const errorMsg =
+            e.error?.message || e.error?.toString() || "Map failed to load";
+          setError(`Map error: ${errorMsg}`);
+        });
+
+        // Add a timeout to catch hanging loads
+        const timeout = setTimeout(() => {
+          if (!map.current?.loaded()) {
+            setError(
+              "Map loading timed out. Please check your network connection.",
+            );
+          }
+        }, 10000);
+
+        map.current.on("load", () => {
+          clearTimeout(timeout);
+        });
+      } catch (error) {
+        setError(`Initialization error: ${error.message}`);
+      }
     }
 
     return () => {
